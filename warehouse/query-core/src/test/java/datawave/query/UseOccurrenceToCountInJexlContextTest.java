@@ -72,6 +72,7 @@ public abstract class UseOccurrenceToCountInJexlContextTest {
         
         @BeforeClass
         public static void setUp() throws Exception {
+            System.setProperty("dw.metadatahelper.all.auths", "A,B,C,D,T,U,V,W,X,Y,Z");
             QueryTestTableHelper qtth = new QueryTestTableHelper(UseOccurrenceToCountInJexlContextTest.ShardRange.class.toString(), log);
             connector = qtth.connector;
             
@@ -94,6 +95,7 @@ public abstract class UseOccurrenceToCountInJexlContextTest {
         
         @BeforeClass
         public static void setUp() throws Exception {
+            System.setProperty("dw.metadatahelper.all.auths", "A,B,C,D,T,U,V,W,X,Y,Z");
             QueryTestTableHelper qtth = new QueryTestTableHelper(UseOccurrenceToCountInJexlContextTest.DocumentRange.class.toString(), log);
             connector = qtth.connector;
             
@@ -147,11 +149,11 @@ public abstract class UseOccurrenceToCountInJexlContextTest {
         logic.setIndexTableName(QueryTestTableHelper.SHARD_INDEX_TABLE_NAME);
         logic.setReverseIndexTableName(QueryTestTableHelper.SHARD_RINDEX_TABLE_NAME);
         logic.setMaxResults(5000);
-        logic.setMaxRowsToScan(25000);
+        logic.setMaxWork(25000);
         logic.setModelTableName(QueryTestTableHelper.METADATA_TABLE_NAME);
         logic.setQueryPlanner(new DefaultQueryPlanner());
         logic.setIncludeGroupingContext(true);
-        logic.setMarkingFunctions(new MarkingFunctions.NoOp());
+        logic.setMarkingFunctions(new MarkingFunctions.Default());
         logic.setMetadataHelperFactory(new MetadataHelperFactory());
         logic.setDateIndexHelperFactory(new DateIndexHelperFactory());
         logic.setMaxEvaluationPipelines(1);

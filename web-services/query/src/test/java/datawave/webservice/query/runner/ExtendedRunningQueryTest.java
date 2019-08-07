@@ -3,6 +3,10 @@ package datawave.webservice.query.runner;
 import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.isA;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
@@ -22,7 +26,6 @@ import datawave.security.util.DnUtils.NpeUtils;
 import datawave.webservice.common.connection.AccumuloConnectionFactory;
 import datawave.webservice.common.connection.AccumuloConnectionFactory.Priority;
 import datawave.webservice.query.Query;
-import datawave.webservice.query.QueryImpl.Parameter;
 import datawave.webservice.query.cache.QueryMetricFactoryImpl;
 import datawave.webservice.query.cache.ResultsPage;
 import datawave.webservice.query.configuration.GenericQueryConfiguration;
@@ -74,7 +77,7 @@ public class ExtendedRunningQueryTest {
     @Before
     public void setup() {
         System.setProperty(NpeUtils.NPE_OU_PROPERTY, "iamnotaperson");
-        System.setProperty("metadatahelper.default.auths", "A,B,C,D");
+        System.setProperty("dw.metadatahelper.all.auths", "A,B,C,D");
     }
     
     @Test
@@ -97,19 +100,19 @@ public class ExtendedRunningQueryTest {
         PowerMock.verifyAll();
         
         // Verify results
-        assertTrue("Expected an exception to be thrown due to uninitialized instance variables", null != result1);
+        assertNotNull("Expected an exception to be thrown due to uninitialized instance variables", result1);
         
-        assertTrue("Expected a null connector", null == result2);
+        assertNull("Expected a null connector", result2);
         
-        assertTrue("Expected a null priority", null == result3);
+        assertNull("Expected a null priority", result3);
         
-        assertTrue("Expected null logic", null == result4);
+        assertNull("Expected null logic", result4);
         
-        assertTrue("Expected a null query (a.k.a. settings)", null == result5);
+        assertNull("Expected a null query (a.k.a. settings)", result5);
         
-        assertTrue("Expected a null iterator", null == result6);
+        assertNull("Expected a null iterator", result6);
         
-        assertTrue("Expected a null set of authorizations", null == result7);
+        assertNull("Expected a null set of authorizations", result7);
     }
     
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -133,7 +136,7 @@ public class ExtendedRunningQueryTest {
         int pageSize = 3;
         int maxPageSize = 10;
         long pageByteTrigger = 4 * 1024L;
-        long maxRowsToScan = Long.MAX_VALUE;
+        long maxWork = Long.MAX_VALUE;
         long maxResults = 100L;
         List<Object> resultObjects = Arrays.asList(new Object(), "resultObject1", null);
         
@@ -149,6 +152,7 @@ public class ExtendedRunningQueryTest {
         expect(this.query.getQueryName()).andReturn(queryName);
         expect(this.query.getBeginDate()).andReturn(beginDate);
         expect(this.query.getEndDate()).andReturn(endDate);
+        expect(this.query.isMaxResultsOverridden()).andReturn(false).anyTimes();
         expect(this.query.getExpirationDate()).andReturn(expirationDate);
         expect(this.query.getParameters()).andReturn(new HashSet<>());
         expect(this.query.getQueryAuthorizations()).andReturn(methodAuths);
@@ -160,11 +164,12 @@ public class ExtendedRunningQueryTest {
         while (iterator.hasNext()) {
             expect(this.transformIterator.hasNext()).andReturn(iterator.hasNext());
             expect(this.transformIterator.next()).andReturn(iterator.next());
+            expect(this.transformIterator.getTransformer()).andReturn(transformer);
         }
         expect(this.query.getPagesize()).andReturn(pageSize).anyTimes();
         expect(this.queryLogic.getMaxPageSize()).andReturn(maxPageSize).anyTimes();
         expect(this.queryLogic.getPageByteTrigger()).andReturn(pageByteTrigger).anyTimes();
-        expect(this.queryLogic.getMaxRowsToScan()).andReturn(maxRowsToScan).anyTimes();
+        expect(this.queryLogic.getMaxWork()).andReturn(maxWork).anyTimes();
         expect(this.queryLogic.getMaxResults()).andReturn(maxResults).anyTimes();
         expect(this.genericConfiguration.getQueryString()).andReturn(query).once();
         
@@ -179,14 +184,14 @@ public class ExtendedRunningQueryTest {
         PowerMock.verifyAll();
         
         // Verify results
-        assertTrue("Expected a non-null page", null != result1);
-        assertTrue("Expected a non-null list of results", null != result1.getResults());
-        assertTrue("Expected 2 non-null items in the list of results", result1.getResults().size() == 2);
-        assertTrue("Expected status to be closed", status == QueryMetric.Lifecycle.RESULTS);
+        assertNotNull("Expected a non-null page", result1);
+        assertNotNull("Expected a non-null list of results", result1.getResults());
+        assertEquals("Expected 2 non-null items in the list of results", 2, result1.getResults().size());
+        assertSame("Expected status to be closed", status, QueryMetric.Lifecycle.RESULTS);
         
-        assertTrue("Expected a non-null toString() representation", null != result2);
+        assertNotNull("Expected a non-null toString() representation", result2);
         
-        assertTrue("Expected lifecycle to be results", QueryMetric.Lifecycle.RESULTS == subject.getMetric().getLifecycle());
+        assertSame("Expected lifecycle to be results", QueryMetric.Lifecycle.RESULTS, subject.getMetric().getLifecycle());
         
     }
     
@@ -211,7 +216,7 @@ public class ExtendedRunningQueryTest {
         int maxPageSize = 5;
         
         long pageByteTrigger = 4 * 1024L;
-        long maxRowsToScan = Long.MAX_VALUE;
+        long maxWork = Long.MAX_VALUE;
         long maxResults = 4L;
         List<Object> resultObjects = Arrays.asList(new Object(), "resultObject1", "resultObject2", "resultObject3", "resultObject4", "resultObject5");
         
@@ -227,6 +232,7 @@ public class ExtendedRunningQueryTest {
         expect(this.query.getQueryName()).andReturn(queryName);
         expect(this.query.getBeginDate()).andReturn(beginDate);
         expect(this.query.getEndDate()).andReturn(endDate);
+        expect(this.query.isMaxResultsOverridden()).andReturn(false).anyTimes();
         expect(this.query.getExpirationDate()).andReturn(expirationDate);
         expect(this.query.getParameters()).andReturn(new HashSet<>());
         expect(this.query.getQueryAuthorizations()).andReturn(methodAuths);
@@ -243,11 +249,12 @@ public class ExtendedRunningQueryTest {
             expect(this.transformIterator.next()).andReturn(iterator.next());
             count++;
         }
+        expect(this.transformIterator.getTransformer()).andReturn(transformer).times(count);
         
         expect(this.query.getPagesize()).andReturn(pageSize).anyTimes();
         expect(this.queryLogic.getMaxPageSize()).andReturn(maxPageSize).anyTimes();
         expect(this.queryLogic.getPageByteTrigger()).andReturn(pageByteTrigger).anyTimes();
-        expect(this.queryLogic.getMaxRowsToScan()).andReturn(maxRowsToScan).anyTimes();
+        expect(this.queryLogic.getMaxWork()).andReturn(maxWork).anyTimes();
         expect(this.queryLogic.getMaxResults()).andReturn(maxResults).anyTimes();
         expect(this.genericConfiguration.getQueryString()).andReturn(query).once();
         
@@ -263,12 +270,12 @@ public class ExtendedRunningQueryTest {
         PowerMock.verifyAll();
         
         // Verify results
-        assertTrue("Expected a non-null page", null != result1);
-        assertTrue("Expected a non-null list of results", null != result1.getResults());
+        assertNotNull("Expected a non-null page", result1);
+        assertNotNull("Expected a non-null list of results", result1.getResults());
         assertTrue("Expected MAXRESULTS non-null items in the list of results", resultObjects.size() > maxResults);
-        assertTrue("Expected status to be MAXRESULTS", status == QueryMetric.Lifecycle.MAXRESULTS);
+        assertSame("Expected status to be MAXRESULTS", status, QueryMetric.Lifecycle.MAXRESULTS);
         
-        assertTrue("Expected a non-null toString() representation", null != result2);
+        assertNotNull("Expected a non-null toString() representation", result2);
     }
     
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -290,7 +297,6 @@ public class ExtendedRunningQueryTest {
         expect(this.query.getUserDN()).andReturn(userDN).times(2);
         expect(this.queryLogic.initialize(eq(this.connector), eq(this.query), isA(Set.class))).andReturn(this.genericConfiguration);
         this.queryLogic.setupQuery(this.genericConfiguration);
-        expect(this.transformIterator.getTransformer()).andReturn(transformer);
         this.queryMetrics.updateMetric(isA(QueryMetric.class));
         PowerMock.expectLastCall().times(3);
         expect(this.queryLogic.getTransformIterator(this.query)).andReturn(this.transformIterator);
@@ -309,10 +315,10 @@ public class ExtendedRunningQueryTest {
         // Verify results
         assertTrue("Expected isCanceled() to return true", result1);
         
-        assertTrue("Expected a non-null page", null != result2);
-        assertTrue("Expected a non-null list of results", null != result2.getResults());
+        assertNotNull("Expected a non-null page", result2);
+        assertNotNull("Expected a non-null list of results", result2.getResults());
         assertTrue("Expected an empty list of results", result2.getResults().isEmpty());
-        assertTrue("Expected status to be cancelled", QueryMetric.Lifecycle.CANCELLED == subject.getMetric().getLifecycle());
+        assertSame("Expected status to be cancelled", QueryMetric.Lifecycle.CANCELLED, subject.getMetric().getLifecycle());
     }
     
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -350,6 +356,6 @@ public class ExtendedRunningQueryTest {
         QueryMetric.Lifecycle status = subject.getMetric().getLifecycle();
         PowerMock.verifyAll();
         
-        assertTrue("Expected status to be closed", status == QueryMetric.Lifecycle.CLOSED);
+        assertSame("Expected status to be closed", status, QueryMetric.Lifecycle.CLOSED);
     }
 }

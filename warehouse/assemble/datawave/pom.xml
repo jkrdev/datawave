@@ -4,7 +4,7 @@
     <parent>
         <groupId>gov.nsa.datawave</groupId>
         <artifactId>assemble-parent</artifactId>
-        <version>2.4.0-SNAPSHOT</version>
+        <version>3.0.0-SNAPSHOT</version>
     </parent>
     <artifactId>assemble-datawave</artifactId>
     <packaging>pom</packaging>
@@ -41,7 +41,20 @@
         </dependency>
         <dependency>
             <groupId>gov.nsa.datawave</groupId>
+            <artifactId>datawave-data-dictionary-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>gov.nsa.datawave</groupId>
             <artifactId>datawave-edge-dictionary-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>gov.nsa.datawave</groupId>
+            <artifactId>datawave-edge-model-configuration-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>gov.nsa.datawave</groupId>
+            <artifactId>datawave-index-stats</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>gov.nsa.datawave</groupId>
@@ -103,10 +116,6 @@
             <artifactId>netty-all</artifactId>
         </dependency>
         <dependency>
-            <groupId>joda-time</groupId>
-            <artifactId>joda-time</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-jci-core</artifactId>
         </dependency>
@@ -130,26 +139,6 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
             <version>${version.caffeine}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hornetq</groupId>
-            <artifactId>hornetq-commons</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hornetq</groupId>
-            <artifactId>hornetq-core-client</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hornetq</groupId>
-            <artifactId>hornetq-jms-client</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hornetq</groupId>
-            <artifactId>hornetq-server</artifactId>
             <scope>runtime</scope>
         </dependency>
         <dependency>
@@ -415,9 +404,9 @@
             </build>
         </profile>
         <profile>
-            <!-- 
+            <!--
 				WARNING WARNING WARNING
-				
+
 				If you change anything in this profile regarding which files are included, then you need to make the
 				corresponding change in src/main/assembly/dist.xml.  Unfortunately, there is no way for the RPM and
 				assembly plugins to share the same configuration, so this information must be duplicated.
@@ -499,7 +488,7 @@
                                         <source>
                                             <location>${project.build.directory}/archive</location>
                                             <excludes>
-                                                <!-- Leave out the bin dir since we add that below with different 
+                                                <!-- Leave out the bin dir since we add that below with different
 													permissions -->
                                                 <exclude>bin/**</exclude>
                                             </excludes>
@@ -543,7 +532,6 @@
                                         <includes>
                                             <include>commons-pool:commons-pool</include>
                                             <include>org.apache.commons:commons-lang3</include>
-                                            <include>joda-time:joda-time</include>
                                             <include>com.google.protobuf:protobuf-java</include>
                                             <include>com.esotericsoftware.kryo:kryo</include>
                                             <include>org.objenesis:objenesis</include>
@@ -573,10 +561,16 @@
                                             <include>${project.groupId}:datawave-query-core</include>
                                             <include>${project.groupId}:datawave-metrics-core</include>
                                             <include>${project.groupId}:datawave-common</include>
+                                            <include>${project.groupId}:datawave-data-dictionary-core</include>
                                             <include>${project.groupId}:datawave-edge-dictionary-core</include>
+                                            <include>${project.groupId}:datawave-edge-model-configuration-core</include>
                                             <include>${project.groupId}:datawave-ingest-wikipedia</include>
                                             <include>${project.groupId}:datawave-ingest-nyctlc</include>
                                             <include>gov.nsa.datawave.microservice:accumulo-utils</include>
+                                            <include>gov.nsa.datawave.microservice:metadata-utils</include>
+                                            <include>gov.nsa.datawave.microservice:type-utils</include>
+                                            <include>gov.nsa.datawave.microservice:base-rest-responses</include>
+                                            <include>gov.nsa.datawave.microservice:common-utils</include>
                                             <include>gov.nsa.datawave.webservices:datawave-ws-common</include>
                                             <include>gov.nsa.datawave.webservices:datawave-ws-common-util</include>
                                             <include>gov.nsa.datawave.webservices:datawave-ws-client</include>
@@ -602,6 +596,9 @@
                                             <include>org.springframework:spring-context-support</include>
                                             <include>org.springframework:spring-expression</include>
                                             <include>aopalliance:aopalliance</include>
+                                            <include>com.fasterxml.jackson.core:jackson-databind</include>
+                                            <include>com.fasterxml.jackson.core:jackson-core</include>
+                                            <include>com.fasterxml.jackson.core:jackson-annotations</include>
                                         </includes>
                                     </dependency>
                                 </mapping>
@@ -617,6 +614,10 @@
                                             <include>${project.groupId}:datawave-query-core</include>
                                             <include>${project.groupId}:datawave-metrics-core</include>
                                             <include>gov.nsa.datawave.microservice:accumulo-utils</include>
+                                            <include>gov.nsa.datawave.microservice:metadata-utils</include>
+                                            <include>gov.nsa.datawave.microservice:type-utils</include>
+                                            <include>gov.nsa.datawave.microservice:base-rest-responses</include>
+                                            <include>gov.nsa.datawave.microservice:common-utils</include>
                                             <include>gov.nsa.datawave.webservices:datawave-ws-common</include>
                                             <include>gov.nsa.datawave.webservices:datawave-ws-common-util</include>
                                             <include>com.google.code.gson:gson</include>

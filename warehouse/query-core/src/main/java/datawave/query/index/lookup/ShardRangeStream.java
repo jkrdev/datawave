@@ -53,7 +53,9 @@ public class ShardRangeStream extends RangeStream {
             
             try {
                 DefaultQueryPlanner.addOption(cfg, QueryOptions.INDEX_ONLY_FIELDS,
-                                QueryOptions.buildIndexOnlyFieldsString(metadataHelper.getIndexOnlyFields(config.getDatatypeFilter())), true);
+                                QueryOptions.buildFieldStringFromSet(metadataHelper.getIndexOnlyFields(config.getDatatypeFilter())), true);
+                DefaultQueryPlanner.addOption(cfg, QueryOptions.INDEXED_FIELDS,
+                                QueryOptions.buildFieldStringFromSet(metadataHelper.getIndexedFields(config.getDatatypeFilter())), true);
             } catch (TableNotFoundException e) {
                 throw new RuntimeException(e);
             }
@@ -106,7 +108,9 @@ public class ShardRangeStream extends RangeStream {
     
     @Override
     public Range rangeForTerm(String term, String field, Date start, Date end) {
-        return new Range(new Key(DateHelper.format(start) + "_"), false, new Key(DateHelper.format(end) + "_" + '\uffff'), false);
+        Key startKey = new Key(DateHelper.format(start) + "_");
+        Key endKey = new Key(DateHelper.format(end) + "_" + '\uffff');
+        return new Range(startKey, false, endKey, false);
     }
     
     public class FieldIndexParser implements Function<Entry<Key,Value>,QueryPlan> {

@@ -62,9 +62,9 @@ import datawave.query.postprocessing.tf.TFFactory;
 import datawave.query.predicate.EmptyDocumentFilter;
 import datawave.query.statsd.QueryStatsDClient;
 import datawave.query.transformer.GroupingTransform;
+import datawave.query.transformer.UniqueTransform;
 import datawave.query.util.EmptyContext;
 import datawave.query.util.EntryToTuple;
-import datawave.query.transformer.UniqueTransform;
 import datawave.query.util.TraceIterators;
 import datawave.query.util.Tuple2;
 import datawave.query.util.Tuple3;
@@ -78,6 +78,8 @@ import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.IterationInterruptedException;
 import org.apache.accumulo.core.iterators.IteratorEnvironment;
 import org.apache.accumulo.core.iterators.SortedKeyValueIterator;
+import org.apache.accumulo.core.iterators.YieldCallback;
+import org.apache.accumulo.core.iterators.YieldingKeyValueIterator;
 import org.apache.accumulo.trace.instrument.Span;
 import org.apache.accumulo.trace.instrument.Trace;
 import org.apache.accumulo.tserver.tablet.TabletClosedException;
@@ -94,7 +96,7 @@ import java.net.MalformedURLException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -138,7 +140,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * </ol>
  *
  */
-public class QueryIterator extends QueryOptions implements SortedKeyValueIterator<Key,Value>, JexlContextCreator.JexlContextValueComparator,
+public class QueryIterator extends QueryOptions implements YieldingKeyValueIterator<Key,Value>, JexlContextCreator.JexlContextValueComparator,
                 SourceFactory<Key,Value> {
     
     private static final Logger log = Logger.getLogger(QueryIterator.class);
@@ -154,7 +156,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
     
     protected Key key;
     protected Value value;
-    protected YieldCallbackWrapper<Key> yield;
+    protected YieldCallback<Key> yield;
     
     protected IteratorEnvironment myEnvironment;
     
@@ -175,6 +177,8 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
     protected TypeMetadata typeMetadataWithNonIndexed = null;
     protected TypeMetadata typeMetadata = null;
     
+    protected Map<String,Object> exceededOrEvaluationCache = null;
+    
     public QueryIterator() {}
     
     public QueryIterator(QueryIterator other, IteratorEnvironment env) {
@@ -191,6 +195,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         this.groupingContextAddedByMe = other.groupingContextAddedByMe;
         this.typeMetadataWithNonIndexed = other.typeMetadataWithNonIndexed;
         this.typeMetadata = other.typeMetadata;
+        this.exceededOrEvaluationCache = other.exceededOrEvaluationCache;
         this.trackingSpan = other.trackingSpan;
         // Defer to QueryOptions to re-set all of the query options
         super.deepCopy(other);
@@ -213,14 +218,15 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         // We want to add in spoofed dataTypes for Aggregation/Evaluation to
         // ensure proper numeric evaluation.
         this.typeMetadata = new TypeMetadata(this.getTypeMetadata());
-        typeMetadataWithNonIndexed = new TypeMetadata(this.typeMetadata);
-        typeMetadataWithNonIndexed.addForAllIngestTypes(this.getNonIndexedDataTypeMap());
+        this.typeMetadataWithNonIndexed = new TypeMetadata(this.typeMetadata);
+        this.typeMetadataWithNonIndexed.addForAllIngestTypes(this.getNonIndexedDataTypeMap());
+        
+        this.exceededOrEvaluationCache = new HashMap<>();
         
         // Parse the query
         try {
-            
-            script = JexlASTHelper.parseJexlQuery(this.getQuery());
-            myEvaluationFunction = new JexlEvaluation(this.getQuery(), arithmetic);
+            this.script = JexlASTHelper.parseJexlQuery(this.getQuery());
+            this.myEvaluationFunction = new JexlEvaluation(this.getQuery(), arithmetic);
             
         } catch (Exception e) {
             throw new IOException("Could not parse the JEXL query: '" + this.getQuery() + "'", e);
@@ -230,7 +236,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         this.myEnvironment = env;
         
         if (gatherTimingDetails()) {
-            trackingSpan = new MultiThreadedQuerySpan(getStatsdClient());
+            this.trackingSpan = new MultiThreadedQuerySpan(getStatsdClient());
             this.source = new SourceTrackingIterator(trackingSpan, source);
         } else {
             this.source = source;
@@ -255,8 +261,9 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         return result;
     }
     
-    public void enableYielding(Object yieldCallback) {
-        this.yield = new YieldCallbackWrapper(yieldCallback);
+    @Override
+    public void enableYielding(YieldCallback<Key> yieldCallback) {
+        this.yield = yieldCallback;
     }
     
     @Override
@@ -264,7 +271,6 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         Span s = Trace.start("QueryIterator.next()");
         if (log.isTraceEnabled()) {
             log.trace("next");
-            
         }
         
         try {
@@ -300,6 +306,10 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                 log.debug("Seek range: " + range + " " + query);
             }
             this.range = range;
+            
+            // preserve the original range for use with the Final Document tracking iterator because it is placed after the ResultCountingIterator
+            // so the FinalDocumentTracking iterator needs the start key with the count already appended
+            Range originalRange = range;
             
             // determine whether this is a teardown/rebuild range
             long resultCount = 0;
@@ -386,7 +396,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
             GroupingTransform groupify = getGroupingTransform();
             if (groupify != null && this.groupFieldsBatchSize > 0) {
                 
-                pipelineDocuments = groupingTransform.getGroupingIterator(pipelineDocuments, this.groupFieldsBatchSize);
+                pipelineDocuments = groupingTransform.getGroupingIterator(pipelineDocuments, this.groupFieldsBatchSize, this.yield);
                 
                 if (log.isTraceEnabled()) {
                     pipelineDocuments = Iterators.filter(pipelineDocuments, keyDocumentEntry -> {
@@ -394,7 +404,6 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                         return true;
                     });
                 }
-                
             }
             
             if (this.getReturnType() == ReturnType.kryo) {
@@ -424,15 +433,14 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                 this.serializedDocuments = new ResultCountingIterator(serializedDocuments, resultCount, yield);
             } else if (this.sortedUIDs) {
                 // we have sorted UIDs, so we can mask out the cq
-                this.serializedDocuments = new KeyAdjudicator<Value>(serializedDocuments, yield);
+                this.serializedDocuments = new KeyAdjudicator<>(serializedDocuments, yield);
             }
             
             // only add the final document tracking iterator which sends stats back to the client if collectTimingDetails is true
             if (collectTimingDetails) {
-                Range r = (documentRange == null) ? this.range : documentRange;
                 // if there is no document to return, then add an empty document
                 // to store the timing metadata
-                this.serializedDocuments = new FinalDocumentTrackingIterator(querySpanCollector, trackingSpan, r, this.serializedDocuments,
+                this.serializedDocuments = new FinalDocumentTrackingIterator(querySpanCollector, trackingSpan, originalRange, this.serializedDocuments,
                                 this.getReturnType(), this.isReducedResponse(), this.isCompressResults(), this.yield);
             }
             if (log.isTraceEnabled()) {
@@ -499,7 +507,6 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
             // exit gracefully if we are yielding as an iie is expected in this case
             if ((this.yield != null) && this.yield.hasYielded()) {
                 log.debug("Query yielded " + queryId);
-                return;
             } else {
                 log.debug("Query interrupted " + queryId, e);
                 throw iie;
@@ -534,7 +541,6 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         if (batchedQueries >= 1) {
             List<NestedQuery<Key>> nests = Lists.newArrayList();
             
-            int i = 0;
             for (Entry<Range,String> queries : batchStack) {
                 
                 Range myRange = queries.getKey();
@@ -561,7 +567,6 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                         
                         continue;
                     }
-                    
                 }
                 
                 JexlArithmetic myArithmetic;
@@ -615,8 +620,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
             initKeySource = docIter;
             
         } else {
-            // If we had an event-specific range previously, we need to
-            // reset it back
+            // If we had an event-specific range previously, we need to reset it back
             // to the source we created during init
             docIter = getOrSetKeySource(documentRange, script);
             
@@ -635,11 +639,9 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
             
             // now lets start off the nested iterator
             docIter.initialize();
-            
         }
         
         return docIter;
-        
     }
     
     /**
@@ -663,8 +665,8 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
     }
     
     /**
-     * Returns the elements of {@code unfiltered} that satisfy a predicate. This is used instead of the google commons Iterators.filter to create a
-     * non-statefull filtering iterator.
+     * Returns the elements of {@code unfiltered} that satisfy a predicate. This is used instead of the google commons Iterators.filter to create a non-stateful
+     * filtering iterator.
      */
     public static <T> UnmodifiableIterator<T> statelessFilter(final Iterator<T> unfiltered, final Predicate<? super T> predicate) {
         checkNotNull(unfiltered);
@@ -812,9 +814,9 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         // now filter the attributes to those with the keep flag set true
         if (gatherTimingDetails()) {
             documents = Iterators.transform(documents, new EvaluationTrackingFunction<>(QuerySpan.Stage.AttributeKeepFilter, trackingSpan,
-                            new AttributeKeepFilter<Key>()));
+                            new AttributeKeepFilter<>()));
         } else {
-            documents = Iterators.transform(documents, new AttributeKeepFilter<Key>());
+            documents = Iterators.transform(documents, new AttributeKeepFilter<>());
         }
         
         // Project fields using a whitelist or a blacklist before serialization
@@ -903,18 +905,21 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                 
                 itrWithContext = TraceIterators.transform(tupleItr, tfFunction, "Term Frequency Lookup");
             } else {
-                itrWithContext = Iterators.transform(tupleItr, new EmptyContext<Key,Document,String,Object>());
+                itrWithContext = Iterators.transform(tupleItr, new EmptyContext<>());
             }
             
             final IndexOnlyContextCreator contextCreator = new IndexOnlyContextCreator(sourceDeepCopy, getDocumentRange(documentSource), typeMetadataForEval,
                             compositeMetadata, this, variables, QueryIterator.this);
+            
+            if (exceededOrEvaluationCache != null)
+                contextCreator.addAdditionalEntries(exceededOrEvaluationCache);
             
             final Iterator<Tuple3<Key,Document,DatawaveJexlContext>> itrWithDatawaveJexlContext = Iterators.transform(itrWithContext, contextCreator);
             Iterator<Tuple3<Key,Document,DatawaveJexlContext>> matchedDocuments = statelessFilter(itrWithDatawaveJexlContext, jexlEvaluationFunction);
             if (log.isTraceEnabled()) {
                 log.trace("arithmetic:" + arithmetic + " range:" + getDocumentRange(documentSource) + ", thread:" + Thread.currentThread());
             }
-            return Iterators.transform(matchedDocuments, new TupleToEntry<Key,Document>());
+            return Iterators.transform(matchedDocuments, new TupleToEntry<>());
         } else if (log.isTraceEnabled()) {
             log.trace("Evaluation is disabled, not instantiating Jexl evaluation logic");
         }
@@ -974,7 +979,6 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
             }
             return rangeScript;
         }
-        
     }
     
     protected Iterator<Entry<Key,Document>> mapDocument(SortedKeyValueIterator<Key,Value> deepSourceCopy, Iterator<Entry<Key,Document>> documents,
@@ -1003,9 +1007,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                     retDocuments = Iterators.transform(retDocuments, new DocumentPermutation.DocumentPermutationAggregation(this.getDocumentPermutations()));
                 }
             }
-            
             return retDocuments;
-            
         }
         return documents;
     }
@@ -1105,57 +1107,73 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
             log.error(msg);
             throw new IllegalArgumentException(msg);
         }
-        
     }
     
     protected DocumentProjection getCompositeProjection() {
         DocumentProjection projection = new DocumentProjection(this.isIncludeGroupingContext(), this.isReducedResponse(), isTrackSizes());
         Set<String> composites = Sets.newHashSet();
-        for (Multimap<String,String> val : this.compositeMetadata.getCompositeFieldMapByType().values())
-            for (String compositeField : val.keySet())
-                if (!CompositeIngest.isOverloadedCompositeField(val, compositeField))
-                    composites.add(compositeField);
+        if (compositeMetadata != null) {
+            for (Multimap<String,String> val : this.compositeMetadata.getCompositeFieldMapByType().values())
+                for (String compositeField : val.keySet())
+                    if (!CompositeIngest.isOverloadedCompositeField(val, compositeField))
+                        composites.add(compositeField);
+        }
         projection.initializeBlacklist(composites);
         return projection;
     }
     
+    /**
+     * Determines if a range is document specific according to the following criteria
+     * 
+     * <pre>
+     *     1. Cannot have a null start or end key
+     *     2. Cannot span multiple rows
+     *     3. ColumnFamily must contain a null byte separator
+     * </pre>
+     *
+     * @param r
+     *            - {@link Range} to be evaluated
+     * @return - true if this is a document specific range, false if not.
+     */
     public static boolean isDocumentSpecificRange(Range r) {
         Preconditions.checkNotNull(r);
         
-        // A Range for a document...
-        
-        // Cannot have a null start or end key
-        //
         // Also @see datawave.query.index.lookup.TupleToRange
         // We have already made the assertion that the client is sending us
         // an inclusive start key due to the inability to ascertain the
-        // difference
-        // between and event-specific range and a continueMultiScan.
+        // difference between and event-specific range and a continueMultiScan.
         //
         // As such, it is acceptable for us to make the same assertion on the
-        // inclusivity
-        // of the start key.
+        // inclusivity of the start key.
+        
+        // Cannot have a null start or end key
         if (r.isInfiniteStartKey() || r.isInfiniteStopKey()) {
             return false;
-        } else {
-            Key startKey = r.getStartKey(), endKey = r.getEndKey();
-            
-            // Cannot span multiple rows
-            if (!startKey.getRowData().equals(endKey.getRowData())) {
-                return false;
-            }
-            
-            Text startColfam = startKey.getColumnFamily(), endColfam = endKey.getColumnFamily();
-            
-            // must contain a null byte separator in the column family
-            if (startColfam.find(Constants.NULL) == -1 || endColfam.find(Constants.NULL) == -1) {
-                return false;
-            }
         }
         
+        // Cannot span multiple rows.
+        Key startKey = r.getStartKey();
+        Key endKey = r.getEndKey();
+        if (!startKey.getRowData().equals(endKey.getRowData())) {
+            return false;
+        }
+        
+        // Column Family must contain a null byte separator.
+        Text startCF = startKey.getColumnFamily();
+        Text endCF = endKey.getColumnFamily();
+        if (startCF.find(Constants.NULL) == -1 || endCF.find(Constants.NULL) == -1) {
+            return false;
+        }
         return true;
     }
     
+    /**
+     * Convert the given key's row &amp; column family to a string.
+     *
+     * @param k
+     *            - a {@link Key}
+     * @return - a string representation of the given key's row &amp; column family.
+     */
     public static String rowColfamToString(Key k) {
         if (null == k) {
             return "null";
@@ -1269,7 +1287,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         }
         
         // determine the list of indexed fields
-        Set<String> indexedFields = new HashSet<>(this.getTypeMetadata().keySet());
+        Set<String> indexedFields = this.getIndexedFields();
         indexedFields.removeAll(this.getNonIndexedDataTypeMap().keySet());
         
         return c.newInstance().setSource(this, this.myEnvironment).setTimeFilter(this.getTimeFilter()).setTypeMetadata(this.getTypeMetadata())
@@ -1286,7 +1304,7 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
                         .setSortedUIDs(sortedUIDs).limit(documentRange).disableIndexOnly(disableFiEval).limit(this.sourceLimit)
                         .setCollectTimingDetails(this.collectTimingDetails).setQuerySpanCollector(this.querySpanCollector)
                         .setIndexOnlyFields(this.getAllIndexOnlyFields()).setAllowTermFrequencyLookup(this.allowTermFrequencyLookup)
-                        .setCompositeMetadata(compositeMetadata);
+                        .setCompositeMetadata(compositeMetadata).setExceededOrEvaluationCache(exceededOrEvaluationCache);
         // TODO: .setStatsPort(this.statsdHostAndPort);
     }
     
@@ -1313,7 +1331,8 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
     protected SatisfactionVisitor createSatisfiabilityVisitor(boolean isQueryFullySatisfiedInitialState) {
         
         // determine the list of indexed fields
-        Set<String> indexedFields = new HashSet<>(this.getTypeMetadata().keySet());
+        Set<String> indexedFields = this.getIndexedFields();
+        
         indexedFields.removeAll(this.getNonIndexedDataTypeMap().keySet());
         
         return new SatisfactionVisitor(getNonEventFields(), indexedFields, Collections.emptySet(), isQueryFullySatisfiedInitialState);
@@ -1384,12 +1403,11 @@ public class QueryIterator extends QueryOptions implements SortedKeyValueIterato
         if (groupingTransform == null && getGroupFields() != null & !getGroupFields().isEmpty()) {
             synchronized (getGroupFields()) {
                 if (groupingTransform == null) {
-                    groupingTransform = new GroupingTransform(null, getGroupFields());
+                    groupingTransform = new GroupingTransform(null, getGroupFields(), true);
                     groupingTransform.initialize(null, MarkingFunctionsFactory.createMarkingFunctions());
                 }
             }
         }
         return groupingTransform;
     }
-    
 }

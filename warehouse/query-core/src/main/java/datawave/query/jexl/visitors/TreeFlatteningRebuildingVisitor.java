@@ -15,6 +15,7 @@ import datawave.query.jexl.nodes.QueryPropertyMarker;
 import org.apache.commons.jexl2.parser.ASTAndNode;
 import org.apache.commons.jexl2.parser.ASTAssignment;
 import org.apache.commons.jexl2.parser.ASTDelayedPredicate;
+import org.apache.commons.jexl2.parser.ASTEvaluationOnly;
 import org.apache.commons.jexl2.parser.ASTNotNode;
 import org.apache.commons.jexl2.parser.ASTOrNode;
 import org.apache.commons.jexl2.parser.ASTReference;
@@ -84,7 +85,7 @@ public class TreeFlatteningRebuildingVisitor extends RebuildingVisitor {
     @Override
     public Object visit(ASTAndNode node, Object data) {
         if (ExceededValueThresholdMarkerJexlNode.instanceOf(node) || ExceededTermThresholdMarkerJexlNode.instanceOf(node)
-                        || ExceededOrThresholdMarkerJexlNode.instanceOf(node) || ASTDelayedPredicate.instanceOf(node)) {
+                        || ExceededOrThresholdMarkerJexlNode.instanceOf(node) || ASTDelayedPredicate.instanceOf(node) || ASTEvaluationOnly.instanceOf(node)) {
             return super.visit(node, data);
         } else {
             ASTAndNode andNode = JexlNodes.newInstanceOfType(node);
@@ -99,7 +100,7 @@ public class TreeFlatteningRebuildingVisitor extends RebuildingVisitor {
     public Object visit(ASTReference node, Object data) {
         if (!removeReferences) {
             return super.visit(node, data);
-        } else if (ASTDelayedPredicate.instanceOf(node) || IndexHoleMarkerJexlNode.instanceOf(node)) {
+        } else if (ASTDelayedPredicate.instanceOf(node) || IndexHoleMarkerJexlNode.instanceOf(node) || ASTEvaluationOnly.instanceOf(node)) {
             return super.visit(node, data);
         } else if (ExceededValueThresholdMarkerJexlNode.instanceOf(node) || ExceededTermThresholdMarkerJexlNode.instanceOf(node)
                         || ExceededOrThresholdMarkerJexlNode.instanceOf(node)) {
@@ -236,7 +237,7 @@ public class TreeFlatteningRebuildingVisitor extends RebuildingVisitor {
             JexlNode node = (JexlNode) currentNode.jjtGetChild(i).jjtAccept(this, null);
             JexlNode dereferenced = JexlASTHelper.dereference(node);
             
-            if (acceptableNodesToCombine(currentNode, dereferenced)) {
+            if (acceptableNodesToCombine(currentNode, dereferenced, !node.equals(dereferenced))) {
                 flattenTree(dereferenced, newNode, data);
             } else {
                 newNode.jjtAddChild(node, newNode.jjtGetNumChildren());
@@ -247,12 +248,14 @@ public class TreeFlatteningRebuildingVisitor extends RebuildingVisitor {
         return newNode;
     }
     
-    protected boolean acceptableNodesToCombine(JexlNode currentNode, JexlNode newNode) {
+    protected boolean acceptableNodesToCombine(JexlNode currentNode, JexlNode newNode, boolean isWrapped) {
         if (currentNode.getClass().equals(newNode.getClass())) {
             // if this is a bounded range or marker node, then to not combine
             if (newNode instanceof ASTAndNode && isBoundedRange((ASTAndNode) newNode)) {
                 return false;
-            } else if (newNode instanceof ASTAndNode && QueryPropertyMarker.instanceOf(newNode, null)) {
+            }
+            // don't allow combination of a marker node UNLESS it's already unwrapped
+            else if (newNode instanceof ASTAndNode && QueryPropertyMarker.instanceOf(newNode, null) && isWrapped) {
                 return false;
             }
             

@@ -6,7 +6,11 @@ import datawave.marking.MarkingFunctions;
 import datawave.query.Constants;
 import datawave.query.QueryTestTableHelper;
 import datawave.query.planner.DefaultQueryPlanner;
-import datawave.query.testframework.*;
+import datawave.query.testframework.AbstractFunctionalQuery;
+import datawave.query.testframework.AccumuloSetupHelper;
+import datawave.query.testframework.DataTypeHadoopConfig;
+import datawave.query.testframework.FieldConfig;
+import datawave.query.testframework.QueryLogicTestHarness;
 import datawave.query.testframework.cardata.CarsDataType;
 import datawave.query.testframework.cardata.CarsDataType.CarField;
 import datawave.query.testframework.cardata.GenericCarFields;
@@ -21,7 +25,16 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * See {@link GenericCarFields#index} for which fields are indexed in the data set used by this test.
@@ -48,7 +61,7 @@ public class IndexQueryLogicTest extends AbstractFunctionalQuery {
     }
     
     @Before
-    public void querySetUp() {
+    public void querySetUp() throws IOException {
         log.debug("---------  querySetUp  ---------");
         
         // Super call to pick up authSet initialization
@@ -62,7 +75,7 @@ public class IndexQueryLogicTest extends AbstractFunctionalQuery {
         this.logic.setIncludeGroupingContext(true);
         
         this.logic.setDateIndexHelperFactory(new DateIndexHelperFactory());
-        this.logic.setMarkingFunctions(new MarkingFunctions.NoOp());
+        this.logic.setMarkingFunctions(new MarkingFunctions.Default());
         this.logic.setMetadataHelperFactory(new MetadataHelperFactory());
         this.logic.setQueryPlanner(new DefaultQueryPlanner());
         this.logic.setResponseObjectFactory(new DefaultResponseObjectFactory());

@@ -13,7 +13,6 @@ import javax.xml.bind.annotation.XmlSeeAlso;
 
 import datawave.webservice.query.QueryImpl.Parameter;
 import datawave.webservice.query.metric.BaseQueryMetric;
-import datawave.webservice.query.metric.QueryMetric;
 import datawave.webservice.query.util.QueryUncaughtExceptionHandler;
 
 @XmlAccessorType(XmlAccessType.NONE)
@@ -56,6 +55,12 @@ public abstract class Query {
     public abstract int getPageTimeout();
     
     public abstract void setPageTimeout(int pageTimeout);
+    
+    public abstract long getMaxResultsOverride();
+    
+    public abstract void setMaxResultsOverride(long maxResults);
+    
+    public abstract boolean isMaxResultsOverridden();
     
     public abstract Set<Parameter> getParameters();
     

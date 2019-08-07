@@ -1,7 +1,6 @@
 package datawave.query.testframework;
 
 import au.com.bytecode.opencsv.CSVReader;
-import datawave.data.normalizer.Normalizer;
 import datawave.query.testframework.CitiesDataType.CityField;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
@@ -12,10 +11,8 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -36,7 +33,7 @@ public class CityDataManager extends AbstractDataManager {
     @Override
     public void addTestData(final URI file, final String datatype, final Set<String> indexes) throws IOException {
         Assert.assertFalse("datatype has already been configured(" + datatype + ")", this.rawData.containsKey(datatype));
-        try (final Reader reader = Files.newBufferedReader(Paths.get(file)); final CSVReader csv = new CSVReader(reader)) {
+        try (final Reader reader = Files.newBufferedReader(Paths.get(file)); final CSVReader csv = new CSVReader(reader, ',', '\"', '\0')) {
             String[] data;
             int count = 0;
             Set<RawData> cityData = new HashSet<>();

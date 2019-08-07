@@ -46,6 +46,7 @@ import org.apache.log4j.Logger;
 import java.io.IOException;
 import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -111,8 +112,9 @@ public class MetricsIngester extends Configured implements Tool {
         Class<? extends Mapper<?,?,?,?>> mapperClass;
         String outTable;
         
-        FileSystem fs = FileSystem.get(conf);
-        FileStatus[] fstats = fs.listStatus(new Path(conf.get(MetricsConfig.INPUT_DIRECTORY)));
+        Path inputDirectoryPath = new Path(conf.get(MetricsConfig.INPUT_DIRECTORY));
+        FileSystem fs = FileSystem.get(inputDirectoryPath.toUri(), conf);
+        FileStatus[] fstats = fs.listStatus(inputDirectoryPath);
         Path[] files = FileUtil.stat2Paths(fstats);
         Path[] fileBuffer = new Path[MAX_FILES];
         for (int i = 0; i < files.length;) {
@@ -192,8 +194,9 @@ public class MetricsIngester extends Configured implements Tool {
         /*
          * This block allows for us to read from a virtual "snapshot" of a directory and remove only files we process.
          */
-        FileSystem fs = FileSystem.get(conf);
-        FileStatus[] fstats = fs.listStatus(new Path(conf.get(MetricsConfig.INPUT_DIRECTORY)));
+        Path inputDirectoryPath = new Path(conf.get(MetricsConfig.INPUT_DIRECTORY));
+        FileSystem fs = FileSystem.get(inputDirectoryPath.toUri(), conf);
+        FileStatus[] fstats = fs.listStatus(inputDirectoryPath);
         Path[] inPaths = {};
         if (fstats != null && fstats.length > 0) {
             inPaths = FileUtil.stat2Paths(fstats);
@@ -258,8 +261,7 @@ public class MetricsIngester extends Configured implements Tool {
             cf = iterKey.getColumnFamily().toString();
             try {
                 dateObj = DateHelper.parseTimeExactToSeconds(cf);
-                Date dateObjNext = (Date) dateObj.clone();
-                dateObjNext.setHours(dateObj.getHours() + 1);
+                Date dateObjNext = DateHelper.addHours(dateObj, 1);
                 if (calendar.getTime().compareTo(dateObj) > 0) {
                     // remove the entries older than 24 hrs. If we are restarting after a long pause,
                     // then those entries will be removed following successful access.
@@ -270,7 +272,7 @@ public class MetricsIngester extends Configured implements Tool {
                 ranges.add(new Range(new Key(new Text("IngestJob_" + outFormat.format(dateObj))), new Key(
                                 new Text("IngestJob_" + outFormat.format(dateObjNext)))));
                 
-            } catch (IllegalArgumentException e) {
+            } catch (DateTimeParseException e) {
                 log.error(e);
             }
             

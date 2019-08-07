@@ -9,6 +9,10 @@ spring:
           accumuloAuditSink:
             consumer:
               autoBindDlq: true
+          dumpAuditSink:
+            consumer:
+              autoBindDlq: true
+              bindQueue: false
       bindings:
         auditSource:
           destination: 'audit'
@@ -20,12 +24,27 @@ spring:
         accumuloAuditSink:
           destination: 'audit'
           group: 'accumulo'
+        dumpAuditSink:
+          destination: 'audit'
+          group: 'dump'
+          consumer:
+            concurrency: 5
 
 audit:
-  log:
-    enabled: true
-  accumulo:
-    enabled: false
+  fsConfigResources:
+    - '/etc/hadoop/conf/core-site.xml'
+    - '/etc/hadoop/conf/hdfs-site.xml'
+  auditors:
+    log:
+      enabled: true
+    accumulo:
+      enabled: false
+    file:
+      enabled: true
+      pathUri: 'file:///audit'
+    dump:
+      enabled: true
+      pathUri: 'file:///audit'
 
 logging:
   level:

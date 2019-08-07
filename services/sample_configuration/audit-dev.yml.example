@@ -4,8 +4,15 @@
 server:
   port: 8743
 
+# Don't use a Hazelcast client, but rather use an embedded Hazelcast member. This is
+# only useful for development, and in production, this property should not be set (or
+# should only be set to true)
+hazelcast.client.enabled: ${hzClient:false}
+
 # CONFIGURE ME
 # audit:
+#   replay:
+#     enabled: true
 #   health:
 #     rabbit:
 #       enabled: true

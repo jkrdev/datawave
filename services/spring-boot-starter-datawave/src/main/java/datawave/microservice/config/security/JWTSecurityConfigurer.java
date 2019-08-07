@@ -1,5 +1,6 @@
 package datawave.microservice.config.security;
 
+import com.google.common.base.Preconditions;
 import datawave.microservice.authorization.Http403ForbiddenEntryPoint;
 import datawave.microservice.authorization.config.DatawaveSecurityProperties;
 import datawave.microservice.authorization.jwt.JWTAuthenticationFilter;
@@ -9,14 +10,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.security.SecurityProperties;
+import org.springframework.boot.autoconfigure.security.servlet.PathRequest;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.lang.Nullable;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -38,8 +41,7 @@ import java.util.List;
  */
 @Order(SecurityProperties.BASIC_AUTH_ORDER - 2)
 @Configuration
-@EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true, jsr250Enabled = true)
+@ConditionalOnWebApplication
 @ConditionalOnProperty(name = "security.jwt.enabled", matchIfMissing = true)
 public class JWTSecurityConfigurer extends WebSecurityConfigurerAdapter {
     private final DatawaveSecurityProperties securityProperties;
@@ -95,8 +97,23 @@ public class JWTSecurityConfigurer extends WebSecurityConfigurerAdapter {
     }
     
     @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    protected void configure(@Nullable AuthenticationManagerBuilder auth) throws Exception {
+        Preconditions.checkNotNull(auth);
         auth.authenticationProvider(jwtAuthenticationProvider);
+    }
+    
+    /**
+     * Configures web security to allow access to static resources without authentication.
+     *
+     * @param web
+     *            the {@link WebSecurity} to configure
+     * @throws Exception
+     *             if there is any problem configuring the web security
+     */
+    @Override
+    public void configure(WebSecurity web) throws Exception {
+        super.configure(web);
+        web.ignoring().requestMatchers(PathRequest.toStaticResources().atCommonLocations());
     }
     
     protected AuthenticationEntryPoint getAuthenticationEntryPoint() {
@@ -129,6 +146,7 @@ public class JWTSecurityConfigurer extends WebSecurityConfigurerAdapter {
             filterChain.doFilter(httpServletRequest, httpServletResponse);
         }
         
+        @Nullable
         private X509Certificate extractClientCertificate(HttpServletRequest request) {
             X509Certificate[] certs = (X509Certificate[]) request.getAttribute("javax.servlet.request.X509Certificate");
             

@@ -23,33 +23,27 @@
     <modules>
         <module>..</module>
         <module>../service-parent</module>
-        <!-- Temporarily removed until the first version is released and this module is removed from the parent pom. -->
-        <!--<module>../accumulo-utils</module>-->
+        <module>../common-utils</module>
+        <module>../accumulo-utils</module>
+        <module>../base-rest-responses</module>
+        <module>../type-utils</module>
+        <module>../metadata-utils</module>
         <module>../metrics-reporter</module>
         <module>../authorization-api</module>
         <module>../audit-api</module>
         <module>../hazelcast-common</module>
         <module>../hazelcast-client</module>
+        <module>../spring-boot-starter-datawave-cache</module>
         <module>../spring-boot-starter-datawave</module>
+        <module>../spring-boot-starter-datawave-audit</module>
         <module>../config-service</module>
         <module>../hazelcast-service</module>
+        <module>../accumulo-api</module>
+        <module>../accumulo-service</module>
         <module>../authorization-service</module>
         <module>../audit-service</module>
+        <module>../dictionary-api</module>
+        <module>../dictionary-service</module>
     </modules>
-
-    <!-- TODO: Remove this when the first version of accumulo-utils is released -->
-    <profiles>
-        <profile>
-            <id>accumulo-utils</id>
-            <activation>
-                <property>
-                    <name>!services</name>
-                </property>
-            </activation>
-            <modules>
-                <module>../accumulo-utils</module>
-            </modules>
-        </profile>
-    </profiles>
 
 </project>

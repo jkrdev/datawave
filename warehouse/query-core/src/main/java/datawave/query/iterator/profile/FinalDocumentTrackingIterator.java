@@ -1,28 +1,26 @@
 package datawave.query.iterator.profile;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-
+import com.google.common.collect.Iterators;
+import datawave.query.DocumentSerialization;
+import datawave.query.attributes.Document;
+import datawave.query.function.LogTiming;
 import datawave.query.function.serializer.KryoDocumentSerializer;
 import datawave.query.function.serializer.ToStringDocumentSerializer;
-import datawave.query.iterator.YieldCallbackWrapper;
+import datawave.query.function.serializer.WritableDocumentSerializer;
+import datawave.query.iterator.Util;
 import org.apache.accumulo.core.data.ArrayByteSequence;
 import org.apache.accumulo.core.data.ByteSequence;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.PartialKey;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
+import org.apache.accumulo.core.iterators.YieldCallback;
 import org.apache.hadoop.io.Text;
 import org.apache.log4j.Logger;
 
-import com.google.common.collect.Iterators;
-
-import datawave.query.DocumentSerialization;
-import datawave.query.attributes.Document;
-import datawave.query.function.LogTiming;
-import datawave.query.function.serializer.WritableDocumentSerializer;
-import datawave.query.iterator.Util;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 public class FinalDocumentTrackingIterator implements Iterator<Map.Entry<Key,Value>> {
     
@@ -41,10 +39,10 @@ public class FinalDocumentTrackingIterator implements Iterator<Map.Entry<Key,Val
     private boolean isCompressResults = false;
     private QuerySpanCollector querySpanCollector = null;
     private QuerySpan querySpan = null;
-    private YieldCallbackWrapper yield = null;
+    private YieldCallback yield = null;
     
     public FinalDocumentTrackingIterator(QuerySpanCollector querySpanCollector, QuerySpan querySpan, Range seekRange, Iterator<Map.Entry<Key,Value>> itr,
-                    DocumentSerialization.ReturnType returnType, boolean isReducedResponse, boolean isCompressResults, YieldCallbackWrapper<Key> yield) {
+                    DocumentSerialization.ReturnType returnType, boolean isReducedResponse, boolean isCompressResults, YieldCallback<Key> yield) {
         this.itr = itr;
         this.seekRange = seekRange;
         this.returnType = returnType;
@@ -60,8 +58,16 @@ public class FinalDocumentTrackingIterator implements Iterator<Map.Entry<Key,Val
     
     private boolean isStatsEntryReturned(Range r) {
         // first check if this is a rebuild key (post teardown)
-        if (!r.isStartKeyInclusive() && r.getStartKey() != null && r.getStartKey().getColumnQualifierData() != null) {
-            ByteSequence bytes = r.getStartKey().getColumnQualifierData();
+        if (!r.isStartKeyInclusive()) {
+            // now check if the start key is a final document return
+            return isFinalDocumentKey(r.getStartKey());
+        }
+        return false;
+    }
+    
+    public static boolean isFinalDocumentKey(Key k) {
+        if (k != null && k.getColumnQualifierData() != null) {
+            ByteSequence bytes = k.getColumnQualifierData();
             if (bytes.length() >= MARKER_TEXT.getLength()) {
                 return (bytes.subSequence(bytes.length() - MARKER_TEXT.getLength(), bytes.length()).compareTo(MARKER_SEQUENCE) == 0);
             }
@@ -69,15 +75,7 @@ public class FinalDocumentTrackingIterator implements Iterator<Map.Entry<Key,Val
         return false;
     }
     
-    private Map.Entry<Key,Value> getStatsEntry(Key key) {
-        
-        Key statsKey = key;
-        if (statsKey == null) {
-            statsKey = seekRange.getStartKey();
-            if (!seekRange.isStartKeyInclusive()) {
-                statsKey = statsKey.followingKey(PartialKey.ROW_COLFAM_COLQUAL_COLVIS_TIME);
-            }
-        }
+    private Map.Entry<Key,Value> getStatsEntry(Key statsKey) {
         
         // now add our marker
         statsKey = new Key(statsKey.getRow(), statsKey.getColumnFamily(), Util.appendText(statsKey.getColumnQualifier(), MARKER_TEXT),
@@ -113,11 +111,20 @@ public class FinalDocumentTrackingIterator implements Iterator<Map.Entry<Key,Val
     
     @Override
     public boolean hasNext() {
+        // if we yielded, then leave gracefully
         if (yield != null && yield.hasYielded()) {
             return false;
+            
         } else if (!itrIsDone && itr.hasNext()) {
             return true;
+            
         } else {
+            // if we yielded, then leave gracefully
+            // checking again as this is after the itr.hasNext() call above which may cause a yield
+            if (yield != null && yield.hasYielded()) {
+                return false;
+            }
+            
             itrIsDone = true;
             if (!statsEntryReturned) {
                 if (this.querySpan.hasEntries() || querySpanCollector.hasEntries()) {
@@ -139,7 +146,20 @@ public class FinalDocumentTrackingIterator implements Iterator<Map.Entry<Key,Val
         if (yield == null || !yield.hasYielded()) {
             if (itrIsDone) {
                 if (!statsEntryReturned) {
-                    nextEntry = getStatsEntry(this.lastKey);
+                    
+                    // determine the key to append the stats entry to
+                    Key statsKey = lastKey;
+                    
+                    // if no last key, then use the startkey of the range
+                    if (statsKey == null) {
+                        statsKey = seekRange.getStartKey();
+                        if (!seekRange.isStartKeyInclusive()) {
+                            statsKey = statsKey.followingKey(PartialKey.ROW_COLFAM_COLQUAL_COLVIS_TIME);
+                        }
+                    }
+                    
+                    nextEntry = getStatsEntry(statsKey);
+                    
                     statsEntryReturned = true;
                 }
             } else {

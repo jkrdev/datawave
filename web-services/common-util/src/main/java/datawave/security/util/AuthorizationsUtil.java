@@ -89,10 +89,8 @@ public class AuthorizationsUtil {
     public static LinkedHashSet<Authorizations> getDowngradedAuthorizations(String requestedAuths, DatawavePrincipal principal) {
         
         final DatawaveUser primaryUser = principal.getPrimaryUser();
-        final LinkedHashSet<DatawaveUser> proxyChain = new LinkedHashSet<>();
-        principal.getProxiedUsers().stream().filter(u -> u != primaryUser).forEach(proxyChain::add);
-        
-        return userAuthFunctions().mergeAuthorizations(userAuthFunctions().getRequestedAuthorizations(requestedAuths, primaryUser), proxyChain);
+        UserAuthFunctions uaf = UserAuthFunctions.getInstance();
+        return uaf.mergeAuthorizations(uaf.getRequestedAuthorizations(requestedAuths, primaryUser), principal.getProxiedUsers(), u -> u != primaryUser);
     }
     
     /**
@@ -184,26 +182,5 @@ public class AuthorizationsUtil {
     
     public static Collection<? extends Collection<String>> prepareAuthsForMerge(Authorizations authorizations) {
         return Collections.singleton(new HashSet<>(Arrays.asList(authorizations.toString().split(","))));
-    }
-    
-    private static UserAuthFunctions userAuthFunctions() {
-        return UserAuthFunctionsHolder.INSTANCE;
-    }
-    
-    private static class UserAuthFunctionsHolder {
-        static final UserAuthFunctions INSTANCE = createUserAuthFunctions();
-        
-        private static UserAuthFunctions createUserAuthFunctions() {
-            final String classOverride = System.getProperty("datawave.user.auth.functions.class");
-            if (null == classOverride) {
-                return new UserAuthFunctions.Default();
-            } else {
-                try {
-                    return (UserAuthFunctions) Class.forName(classOverride).newInstance();
-                } catch (Throwable t) {
-                    throw new RuntimeException(String.format("Failed to create instance of '%s'", classOverride), t);
-                }
-            }
-        }
     }
 }

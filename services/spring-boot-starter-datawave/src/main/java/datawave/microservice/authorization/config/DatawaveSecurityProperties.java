@@ -1,6 +1,5 @@
 package datawave.microservice.authorization.config;
 
-import org.springframework.boot.autoconfigure.security.SecurityPrerequisite;
 import org.springframework.boot.autoconfigure.security.SecurityProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
@@ -14,7 +13,7 @@ import java.util.concurrent.TimeUnit;
  * Datawave-specific extensions to {@link SecurityProperties}
  */
 @ConfigurationProperties(prefix = "spring.security.datawave")
-public class DatawaveSecurityProperties implements SecurityPrerequisite {
+public class DatawaveSecurityProperties {
     @NestedConfigurationProperty
     private final Jwt jwt = new Jwt();
     private boolean useTrustedSubjectHeaders;

@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,13 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * @see datawave.accumulo.util.security.UserAuthFunctions.Default
  */
 public interface UserAuthFunctions {
+    
+    /**
+     * System property for overriding {@link Default} instance at runtime, if desired.
+     * 
+     * @see #getInstance()
+     */
+    String DEFAULT_CLASS_OVERRIDE_PROPERTY = "datawave.user.auth.functions.class";
     
     char REQUESTED_AUTHS_DELIMITER = ',';
     
@@ -59,10 +67,14 @@ public interface UserAuthFunctions {
      *            Authorizations associated with the "primary" user, i.e., the initiating user to whom scan results will ultimately be delivered
      * @param proxyChain
      *            Collection of proxies denoting the complete user chain for a given request
+     * @param proxiedUserTest
+     *            A predicate that, given a user from {@code proxyChain}, indicates whether or not that user is the primary user. The predicate should return
+     *            {@code true} if the user is NOT the primary user.
      *
      * @return A set of {@link Authorizations}, one per user entity represented by the user chain including {@code primaryUserAuths}
      */
-    LinkedHashSet<Authorizations> mergeAuthorizations(Authorizations primaryUserAuths, Collection<? extends DatawaveUser> proxyChain);
+    LinkedHashSet<Authorizations> mergeAuthorizations(Authorizations primaryUserAuths, Collection<? extends DatawaveUser> proxyChain,
+                    Predicate<? super DatawaveUser> proxiedUserTest);
     
     /**
      * Default implementation of {@link UserAuthFunctions}
@@ -91,7 +103,8 @@ public interface UserAuthFunctions {
          * Authorizations instance (i.e., {@code new Authorizations()}
          */
         @Override
-        public LinkedHashSet<Authorizations> mergeAuthorizations(Authorizations primaryUserAuths, Collection<? extends DatawaveUser> proxyChain) {
+        public LinkedHashSet<Authorizations> mergeAuthorizations(Authorizations primaryUserAuths, Collection<? extends DatawaveUser> proxyChain,
+                        Predicate<? super DatawaveUser> proxiedUserTest) {
             LinkedHashSet<Authorizations> mergedAuths = new LinkedHashSet<>();
             
             if (null == primaryUserAuths) {
@@ -103,6 +116,7 @@ public interface UserAuthFunctions {
                     // Now simply add the auths from each non-primary user to the merged auths set
                     // @formatter:off
                     proxyChain.stream()
+                            .filter(proxiedUserTest)
                             .map(DatawaveUser::getAuths)
                             .map(UserAuthFunctions::toAuthorizations)
                             .forEach(mergedAuths::add);
@@ -169,5 +183,37 @@ public interface UserAuthFunctions {
      */
     static Authorizations toAuthorizations(Collection<String> auths) {
         return new Authorizations(auths.stream().map(String::trim).map(s -> s.getBytes(UTF_8)).collect(Collectors.toList()));
+    }
+    
+    /**
+     * Gets a {@link Default} instance, which may be overridden at runtime via system property {@link #DEFAULT_CLASS_OVERRIDE_PROPERTY}, if desired. Impl
+     * overrides must be thread-safe
+     *
+     * @return UserAuthFunctions instance
+     */
+    static UserAuthFunctions getInstance() {
+        return Holder.INSTANCE;
+    }
+    
+    /**
+     * On-demand holder for UserAuthFunctions singleton
+     */
+    class Holder {
+        private static final UserAuthFunctions INSTANCE = createUserAuthFunctions();
+        
+        private Holder() {}
+        
+        private static UserAuthFunctions createUserAuthFunctions() {
+            final String classOverride = System.getProperty(DEFAULT_CLASS_OVERRIDE_PROPERTY);
+            if (null == classOverride) {
+                return new UserAuthFunctions.Default();
+            } else {
+                try {
+                    return (UserAuthFunctions) Class.forName(classOverride).newInstance();
+                } catch (Throwable t) {
+                    throw new RuntimeException(String.format("Failed to create instance of '%s'", classOverride), t);
+                }
+            }
+        }
     }
 }

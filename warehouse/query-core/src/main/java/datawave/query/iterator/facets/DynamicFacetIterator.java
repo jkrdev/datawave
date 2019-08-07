@@ -162,6 +162,7 @@ public class DynamicFacetIterator extends FieldIndexOnlyQueryIterator {
         
         Function<Entry<Key,Document>,Entry<DocumentData,Document>> keyToDoc = null;
         
+        // TODO consider using the new EventDataQueryExpressionFilter
         EventDataQueryFieldFilter projection = null;
         
         Iterator<Entry<Key,Document>> documents = null;
@@ -178,12 +179,12 @@ public class DynamicFacetIterator extends FieldIndexOnlyQueryIterator {
         
         AccumuloTreeIterable<Key,DocumentData> doc = null;
         if (null != keyToDoc) {
-            doc = new AccumuloTreeIterable<Key,DocumentData>(fieldIndexResults.tree, keyToDoc);
+            doc = new AccumuloTreeIterable<>(fieldIndexResults.tree, keyToDoc);
         } else {
             if (log.isTraceEnabled()) {
                 log.trace("Skipping document lookup, because we don't need it");
             }
-            doc = new AccumuloTreeIterable<Key,DocumentData>(fieldIndexResults.tree, new Function<Entry<Key,Document>,Entry<DocumentData,Document>>() {
+            doc = new AccumuloTreeIterable<>(fieldIndexResults.tree, new Function<Entry<Key,Document>,Entry<DocumentData,Document>>() {
                 
                 @Override
                 @Nullable

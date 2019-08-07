@@ -395,7 +395,6 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
             }
             
             List<QueryMetric> queryMetrics = new ArrayList<>();
-            queryMetrics.add(new QueryMetric());
             
             if (cachedQueryMetric == null) {
                 // if numPages > 0 or Lifecycle > DEFINED, then we should have a metric cached already
@@ -547,6 +546,7 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
             query.setExpirationDate(DateUtils.addDays(new Date(), 1));
             query.setPagesize(1000);
             query.setUserDN(datawavePrincipal.getShortName());
+            query.setOwner(datawavePrincipal.getShortName());
             query.setId(UUID.randomUUID());
             query.setParameters(ImmutableMap.of(QueryOptions.INCLUDE_GROUPING_CONTEXT, "true"));
             List<QueryMetric> queryMetrics = getQueryMetrics(response, query, datawavePrincipal);
@@ -659,6 +659,8 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
                     }
                 } else if (fieldName.equals("QUERY")) {
                     m.setQuery(fieldValue);
+                } else if (fieldName.equals("PLAN")) {
+                    m.setPlan(fieldValue);
                 } else if (fieldName.equals("QUERY_LOGIC")) {
                     m.setQueryLogic(fieldValue);
                 } else if (fieldName.equals("QUERY_ID")) {
@@ -704,7 +706,10 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
                         
                         String[] parts = StringUtils.split(fieldValue, "/");
                         PageMetric pageMetric = null;
-                        if (parts.length == 7) {
+                        if (parts.length == 8) {
+                            pageMetric = new PageMetric(Long.valueOf(parts[0]), Long.valueOf(parts[1]), Long.valueOf(parts[2]), Long.valueOf(parts[3]),
+                                            Long.valueOf(parts[4]), Long.valueOf(parts[5]), Long.valueOf(parts[6]), Long.valueOf(parts[7]));
+                        } else if (parts.length == 7) {
                             pageMetric = new PageMetric(Long.valueOf(parts[0]), Long.valueOf(parts[1]), Long.valueOf(parts[2]), Long.valueOf(parts[3]),
                                             Long.valueOf(parts[4]), Long.valueOf(parts[5]), Long.valueOf(parts[6]));
                         } else if (parts.length == 5) {
@@ -713,7 +718,9 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
                         } else if (parts.length == 2) {
                             pageMetric = new PageMetric(Long.valueOf(parts[0]), Long.valueOf(parts[1]), 0l, 0l);
                         }
-                        pageMetrics.put(repetition, pageMetric);
+                        
+                        if (pageMetric != null)
+                            pageMetrics.put(repetition, pageMetric);
                     }
                 } else if (fieldName.equals("POSITIVE_SELECTORS")) {
                     List<String> positiveSelectors = m.getPositiveSelectors();
@@ -767,6 +774,10 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
                 
                 else if (fieldName.equals("SEEK_COUNT")) {
                     m.setSeekCount(Long.parseLong(fieldValue));
+                }
+                
+                else if (fieldName.equals("YIELD_COUNT")) {
+                    m.setYieldCount(Long.parseLong(fieldValue));
                 }
                 
                 else if (fieldName.equals("DOC_RANGES")) {
@@ -879,6 +890,11 @@ public class ShardTableQueryMetricHandler extends BaseQueryMetricHandler<QueryMe
     @Override
     public void reload() {
         try {
+            if (this.recordWriter != null) {
+                // don't try to flush the mtbw (close). If recordWriter != null then this method is being called
+                // because of an Exception and the metrics have been saved off to be added to the new recordWriter.
+                this.recordWriter.returnConnector();
+            }
             recordWriter = new AccumuloRecordWriter(this.connectionFactory, conf);
         } catch (AccumuloException | AccumuloSecurityException | IOException e) {
             log.error(e.getMessage(), e);

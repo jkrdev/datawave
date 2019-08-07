@@ -26,7 +26,6 @@ import datawave.webservice.result.BaseResponse;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.security.Authorizations;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.collections4.Predicate;
 import org.apache.commons.collections4.functors.NOPTransformer;
 import org.apache.commons.collections4.iterators.TransformIterator;
 import org.apache.log4j.Logger;
@@ -208,6 +207,21 @@ public class CompositeQueryLogic extends BaseQueryLogic<Object> {
                 return compositeQueryString;
             }
         };
+    }
+    
+    @Override
+    public String getPlan(Connector connection, Query settings, Set<Authorizations> runtimeQueryAuthorizations, boolean expandFields, boolean expandValues)
+                    throws Exception {
+        
+        StringBuilder plans = new StringBuilder();
+        int count = 1;
+        String separator = Integer.toString(count++) + ": ";
+        for (Entry<BaseQueryLogic<?>,QueryLogicHolder> entry : logicState.entrySet()) {
+            plans.append(separator);
+            plans.append(entry.getKey().getPlan(connection, settings, runtimeQueryAuthorizations, expandFields, expandValues));
+            separator = "\n" + Integer.toString(count++) + ": ";
+        }
+        return plans.toString();
     }
     
     @Override

@@ -11,9 +11,6 @@ import datawave.query.config.ShardQueryConfiguration;
 import datawave.query.jexl.ArithmeticJexlEngines;
 import datawave.query.jexl.JexlASTHelper;
 import datawave.query.jexl.JexlNodeFactory;
-import datawave.query.jexl.functions.FunctionJexlNodeVisitor;
-import datawave.query.jexl.functions.QueryFunctions;
-import datawave.query.jexl.functions.JexlFunctionArgumentDescriptorFactory;
 import datawave.query.jexl.functions.arguments.JexlArgumentDescriptor;
 import datawave.query.jexl.visitors.EventDataQueryExpressionVisitor;
 import datawave.query.util.DateIndexHelper;
@@ -96,6 +93,11 @@ public class QueryFunctionsDescriptor implements JexlFunctionArgumentDescriptorF
         
         @Override
         public boolean regexArguments() {
+            return true;
+        }
+        
+        @Override
+        public boolean allowIvaratorFiltering() {
             return true;
         }
     }

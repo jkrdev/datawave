@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import datawave.microservice.authorization.config.DatawaveSecurityProperties;
 import datawave.security.authorization.JWTTokenHandler;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -17,15 +18,16 @@ import java.security.cert.Certificate;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Provides configuration for working with JWTs: Provides a {@link ObjectMapper} that includes the {@link GuavaModule} to handle JSON-encoded Guava types.
+ * Provides configuration for working with JWTs: Provides a {@link GuavaModule} bean which will be picked up automatically by Spring when it creates any
+ * {@link ObjectMapper}, thus allowing serialization to handle JSON-encoded Guava types.
  */
 @Configuration
+@ConditionalOnWebApplication
 public class JWTConfiguration {
+    
     @Bean
-    public ObjectMapper objectMapper() {
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new GuavaModule());
-        return objectMapper;
+    public GuavaModule guavaModule() {
+        return new GuavaModule();
     }
     
     @Bean

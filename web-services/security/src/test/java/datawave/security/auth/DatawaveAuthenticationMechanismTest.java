@@ -40,7 +40,8 @@ import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.isA;
 import static org.easymock.EasyMock.newCapture;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.powermock.api.easymock.PowerMock.replayAll;
 import static org.powermock.api.easymock.PowerMock.verifyAll;
 
@@ -89,12 +90,7 @@ public class DatawaveAuthenticationMechanismTest {
     @Before
     public void setUp() throws Exception {
         System.setProperty("dw.trusted.header.authentication", "true");
-        datawaveAuthenticationMechanism = new DatawaveAuthenticationMechanism() {
-            @Override
-            protected void replaceAuthenticationManagerCacheIfNecessary(IdentityManager idm) {
-                // do nothing here for tests
-            }
-        };
+        datawaveAuthenticationMechanism = new DatawaveAuthenticationMechanism();
         httpRequestHeaders = new HeaderMap();
         httpResponseHeaders = new HeaderMap();
         
@@ -388,6 +384,33 @@ public class DatawaveAuthenticationMechanismTest {
         
         AuthenticationMechanismOutcome outcome = datawaveAuthenticationMechanism.authenticate(httpServerExchange, securityContext);
         assertEquals(AuthenticationMechanismOutcome.NOT_ATTEMPTED, outcome);
+        
+        verifyAll();
+    }
+    
+    @Test
+    public void testJWTHeaderAuthentication() throws Exception {
+        Whitebox.setInternalState(datawaveAuthenticationMechanism, "trustedHeaderAuthentication", false);
+        Whitebox.setInternalState(datawaveAuthenticationMechanism, "jwtHeaderAuthentication", true);
+        
+        httpRequestHeaders.add(new HttpString("Authorization"), "Bearer 1234");
+        
+        String expectedID = "1234";
+        
+        expect(httpServerExchange.getConnection()).andReturn(serverConnection);
+        expect(serverConnection.getSslSessionInfo()).andReturn(null);
+        expect(httpServerExchange.getRequestHeaders()).andReturn(httpRequestHeaders);
+        expect(httpServerExchange.getRequestHeaders()).andReturn(httpRequestHeaders);
+        expect(securityContext.getIdentityManager()).andReturn(identityManager);
+        expect(identityManager.verify(eq(expectedID), isA(Credential.class))).andReturn(account);
+        securityContext.authenticationComplete(account, "DATAWAVE-AUTH", false);
+        expect(httpServerExchange.getRequestStartTime()).andReturn(System.nanoTime());
+        expect(httpServerExchange.getRequestHeaders()).andReturn(httpRequestHeaders);
+        
+        replayAll();
+        
+        AuthenticationMechanismOutcome outcome = datawaveAuthenticationMechanism.authenticate(httpServerExchange, securityContext);
+        assertEquals(AuthenticationMechanismOutcome.AUTHENTICATED, outcome);
         
         verifyAll();
     }

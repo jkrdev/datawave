@@ -1,7 +1,6 @@
 package datawave.query;
 
 import datawave.query.language.parser.jexl.LuceneToJexlQueryParser;
-import datawave.query.language.parser.lucene.LuceneQueryParser;
 import datawave.query.testframework.AbstractFunctionalQuery;
 import datawave.query.testframework.AccumuloSetupHelper;
 import datawave.query.testframework.CitiesDataType;
@@ -15,7 +14,6 @@ import datawave.query.testframework.QueryLogicTestHarness;
 import datawave.query.testframework.ResponseFieldChecker;
 import org.apache.log4j.Logger;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -157,6 +155,19 @@ public class FilterFieldsQueryTest extends AbstractFunctionalQuery {
         String anyState = this.dataManager.convertAnyField(EQ_OP + "'" + state + "'");
         for (final TestCities city : TestCities.values()) {
             String query = CityField.CITY.name() + ":" + city.name() + AND_OP + " #INCLUDE(" + Constants.ANY_FIELD + ",ohio)";
+            String expectQuery = CityField.CITY.name() + EQ_OP + "'" + city.name() + "'" + AND_OP + anyState;
+            this.logic.setParser(new LuceneToJexlQueryParser());
+            runTest(query, expectQuery, true, false);
+        }
+    }
+    
+    @Test
+    public void testAnyFieldLuceneText() throws Exception {
+        log.info("------  testAnyFieldLuceneText  ------");
+        String state = "ohio";
+        String anyState = this.dataManager.convertAnyField(EQ_OP + "'" + state + "'");
+        for (final TestCities city : TestCities.values()) {
+            String query = CityField.CITY.name() + ":" + city.name() + AND_OP + " #TEXT(Ohio)";
             String expectQuery = CityField.CITY.name() + EQ_OP + "'" + city.name() + "'" + AND_OP + anyState;
             this.logic.setParser(new LuceneToJexlQueryParser());
             runTest(query, expectQuery, true, false);

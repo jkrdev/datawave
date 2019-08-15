@@ -266,6 +266,7 @@ public class FlagMaker implements Runnable, Observer, SizeValidator {
                 } else {
                     try {
                         this.fd.addInputFile(new InputFile(folder, status, this.fmc.getBaseHDFSDir(), this.fmc.isUseFolderTimestamp()));
+                        getFileInfo(fc, status);
                     } catch (UnusableFileException e) {
                         log.warn("Skipping unusable file " + status.getPath(), e);
                     }
@@ -273,6 +274,8 @@ public class FlagMaker implements Runnable, Observer, SizeValidator {
             }
         }
     }
+
+    protected void getFileInfo(FlagDataTypeConfig fc, FileStatus status) {}
     
     private boolean shouldOnlyCreateFullFlags(FlagDataTypeConfig fc) {
         return !hasTimeoutOccurred(fc) || isBacklogExcessive(fc);
